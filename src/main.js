@@ -13,6 +13,7 @@ import { Dust } from './dust.js';
 import { CarAudio } from './audio.js';
 import { Rival, RIVAL_DEFS } from './rivals.js';
 import { SkillChain } from './skills.js';
+import { boxContact, resolveContact } from './contact.js';
 import { clamp, lerp } from './noise.js';
 
 // ---------------------------------------------------------------------------------------
@@ -316,32 +317,51 @@ function racePosition(playerS) {
   return ahead + 1;
 }
 
-// Player <-> rival contact: shove both, bleed speed, and report the impact.
-function collideRivals() {
+// Car-to-car contact with oriented boxes: where the cars connect decides how they are
+// pushed and spun. Returns the player's worst velocity change this frame (m/s).
+function playerBody() {
+  return {
+    x: physics.pos.x,
+    z: physics.pos.z,
+    heading: physics.heading,
+    vx: physics.vel.x,
+    vz: physics.vel.z,
+    w: -physics.yawRate, // physics.yawRate > 0 turns right, i.e. the heading decreases
+    invMass: 1 / physics.mass,
+    invInertia: 1 / physics.inertia,
+  };
+}
+
+function collideCars() {
+  const list = raceRivals();
   let worst = 0;
-  for (const r of raceRivals()) {
-    const dx = physics.pos.x - r.pos.x;
-    const dz = physics.pos.z - r.pos.z;
-    const min = 2.7;
-    const d2 = dx * dx + dz * dz;
-    if (d2 >= min * min || Math.abs(physics.pos.y - r.pos.y) > 2) continue;
-    const d = Math.sqrt(d2) || 0.01;
-    const nx = dx / d;
-    const nz = dz / d;
-    const overlap = min - d;
-    physics.pos.x += nx * overlap * 0.6;
-    physics.pos.z += nz * overlap * 0.6;
-    const t = stage.tangents[Math.min(stage.samples.length - 1, Math.floor(r.s / stage.step))];
-    const sideways = nx * -t.y + nz * t.x; // contact normal along the road's right vector
-    r.offset -= sideways * overlap * 0.4;
-    const rv = r.velocity();
-    const vrel = (physics.vel.x - rv.x) * nx + (physics.vel.z - rv.z) * nz;
-    if (vrel < 0) {
-      physics.vel.x -= nx * vrel * 0.8;
-      physics.vel.z -= nz * vrel * 0.8;
-      worst = Math.max(worst, -vrel);
-      r.offsetVel -= sideways * Math.min(6, -vrel) * 0.9;
-      r.v = Math.max(0, r.v * 0.9 + vrel * 0.25 * (nx * t.x + nz * t.y));
+  for (const r of list) {
+    if (Math.abs(physics.pos.y - r.pos.y) > 2 || !physics.grounded) continue;
+    const a = playerBody();
+    const b = r.body();
+    const c = boxContact(a, b);
+    if (!c) continue;
+    const res = resolveContact(a, b, c);
+    physics.vel.x += res.dvax;
+    physics.vel.z += res.dvaz;
+    physics.yawRate -= res.dwa;
+    physics.pos.x += c.nx * c.depth * 0.5;
+    physics.pos.z += c.nz * c.depth * 0.5;
+    r.applyContact(res.dvbx, res.dvbz, res.dwb, -c.nx * c.depth * 0.5, -c.nz * c.depth * 0.5);
+    worst = Math.max(worst, Math.hypot(res.dvax, res.dvaz));
+  }
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      const ra = list[i];
+      const rb = list[j];
+      const a = ra.body();
+      const b = rb.body();
+      const c = boxContact(a, b);
+      if (!c) continue;
+      // AI drivers lean on each other less: softer bounce, less scrub, harder to unsettle
+      const res = resolveContact(a, b, c, { restitution: 0.1, friction: 0.2 });
+      ra.applyContact(res.dvax, res.dvaz, res.dwa, c.nx * c.depth * 0.5, c.nz * c.depth * 0.5, 2.2);
+      rb.applyContact(res.dvbx, res.dvbz, res.dwb, -c.nx * c.depth * 0.5, -c.nz * c.depth * 0.5, 2.2);
     }
   }
   return worst;
@@ -769,12 +789,13 @@ function tick(dt, render = true) {
         others: list.filter((o) => o !== r),
         raceTime,
       });
-      if (r.v > 3 && r.model.car.visible) {
+      if (r.speed > 3 && r.model.car.visible) {
         r.rearWheels(rivalWheels);
-        dust.spawnFromWheels(dt, rivalWheels, r.velocity(), Math.min(r.v * 1.1, 45), clamp(r.v / 60, 0, 0.8));
+        const rate = r.speed * 1.1 + (r.loose ? 40 : 0); // a sliding car kicks up more
+        dust.spawnFromWheels(dt, rivalWheels, r.velocity(), Math.min(rate, 70), clamp(r.speed / 60 + (r.loose ? 0.5 : 0), 0, 1));
       }
     }
-    const bump = collideRivals();
+    const bump = collideCars();
     if (bump > 2) {
       shake = Math.max(shake, Math.min(0.5, bump * 0.05));
       audio.thump(Math.min(1, bump * 0.1));
