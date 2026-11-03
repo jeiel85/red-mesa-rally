@@ -43,7 +43,15 @@ export function boxContact(a, b) {
   let depth = Infinity;
   let nx = 0;
   let nz = 0;
-  for (const [ax, az] of [[fa.fx, fa.fz], [fa.rx, fa.rz], [fb.fx, fb.fz], [fb.rx, fb.rz]]) {
+  let refIsA = true; // whose face the separating axis belongs to
+  let refAlong = 0; // reference box half-extent across the contact face
+  const axes = [
+    [fa.fx, fa.fz, true, CAR_HALF_WIDTH],
+    [fa.rx, fa.rz, true, CAR_HALF_LENGTH],
+    [fb.fx, fb.fz, false, CAR_HALF_WIDTH],
+    [fb.rx, fb.rz, false, CAR_HALF_LENGTH],
+  ];
+  for (const [ax, az, ownA, across] of axes) {
     const ra = CAR_HALF_LENGTH * Math.abs(dot(fa.fx, fa.fz, ax, az)) + CAR_HALF_WIDTH * Math.abs(dot(fa.rx, fa.rz, ax, az));
     const rb = CAR_HALF_LENGTH * Math.abs(dot(fb.fx, fb.fz, ax, az)) + CAR_HALF_WIDTH * Math.abs(dot(fb.rx, fb.rz, ax, az));
     const dist = dot(dx, dz, ax, az);
@@ -54,28 +62,45 @@ export function boxContact(a, b) {
       const s = dist >= 0 ? 1 : -1;
       nx = ax * s;
       nz = az * s;
+      refIsA = ownA;
+      refAlong = across;
     }
   }
-  // contact point: midway between a's corner deepest towards b and b's corner deepest towards a
-  let pa = null;
-  let pb = null;
-  let minA = Infinity;
-  let maxB = -Infinity;
-  for (const c of corners(a, fa)) {
-    const d = dot(c[0], c[1], nx, nz);
-    if (d < minA) { minA = d; pa = c; }
+
+  // Contact point: the other ("incident") box's corners that reach past the reference face,
+  // each clipped to that face's extent and weighted by how deep it reaches. A lone corner
+  // poking a side lands where it pokes, flush faces land mid-overlap, and the point slides
+  // smoothly between the two as the cars' angle changes (no sudden spin from a tiny angle).
+  const ux = -nz; // along the contact face
+  const uz = nx;
+  const ref = refIsA ? a : b;
+  const inc = refIsA ? corners(b, fb) : corners(a, fa);
+  // incident corners reach into the reference box along +n (b's) or -n (a's)
+  const sign = refIsA ? 1 : -1;
+  let best = -Infinity;
+  for (const c of inc) best = Math.max(best, sign * dot(c[0], c[1], nx, nz));
+  const face = best - depth; // the reference face, in the same signed units
+  const uRef = dot(ref.x, ref.z, ux, uz);
+  let wSum = 0;
+  let uSum = 0;
+  for (const c of inc) {
+    const reach = sign * dot(c[0], c[1], nx, nz) - face;
+    if (reach <= 0) continue;
+    const u = Math.min(uRef + refAlong, Math.max(uRef - refAlong, dot(c[0], c[1], ux, uz)));
+    wSum += reach;
+    uSum += reach * u;
   }
-  for (const c of corners(b, fb)) {
-    const d = dot(c[0], c[1], nx, nz);
-    if (d > maxB) { maxB = d; pb = c; }
-  }
-  return { nx, nz, depth, px: (pa[0] + pb[0]) / 2, pz: (pa[1] + pb[1]) / 2 };
+  const u = wSum > 0 ? uSum / wSum : uRef;
+  const n = sign * (best - depth / 2); // halfway between the incident tip and the reference face
+  return { nx, nz, depth, px: ux * u + nx * n, pz: uz * u + nz * n };
 }
 
 // Impulse between two bodies { x, z, vx, vz, w, invMass, invInertia }.
 // Returns velocity/spin changes for both, plus the impulse size (N·s).
 export function resolveContact(a, b, c, { restitution = 0.2, friction = 0.35 } = {}) {
-  const out = { dvax: 0, dvaz: 0, dwa: 0, dvbx: 0, dvbz: 0, dwb: 0, impulse: 0 };
+  // closing: approach speed along the normal at the contact point (m/s), a measure of how hard
+  // the hit was that doesn't depend on mass or spin
+  const out = { dvax: 0, dvaz: 0, dwa: 0, dvbx: 0, dvbz: 0, dwb: 0, impulse: 0, closing: 0 };
   const rax = c.px - a.x;
   const raz = c.pz - a.z;
   const rbx = c.px - b.x;
@@ -85,6 +110,7 @@ export function resolveContact(a, b, c, { restitution = 0.2, friction = 0.35 } =
   const rvz = a.vz - a.w * rax - (b.vz - b.w * rbx);
   const vn = dot(rvx, rvz, c.nx, c.nz);
   if (vn >= 0) return out; // already separating
+  out.closing = -vn;
 
   const ran = cross(rax, raz, c.nx, c.nz);
   const rbn = cross(rbx, rbz, c.nx, c.nz);

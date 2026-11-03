@@ -106,7 +106,7 @@ export class Rival {
 
   update(dt, ctx) {
     if (this.loose) {
-      this.updateLoose(dt);
+      this.updateLoose(dt, ctx);
       return;
     }
     const st = this.stage;
@@ -157,17 +157,21 @@ export class Rival {
     this.yawKick += this.yawKickVel * dt;
     this.headingBlend *= Math.exp(-2.2 * dt);
     this.s += this.v * dt;
-    const finishS = st.finishIndex * st.step;
-    if (!this.finished && this.s >= finishS && running) {
-      this.finished = true;
-      this.finishTime = raceTime;
-    }
+    this.checkFinish(running, raceTime);
     this.s = Math.min(this.s, (st.samples.length - 2) * st.step);
     this.applyTransform(dt);
   }
 
+  checkFinish(running, raceTime) {
+    const st = this.stage;
+    if (!this.finished && running && this.s >= st.finishIndex * st.step) {
+      this.finished = true;
+      this.finishTime = raceTime;
+    }
+  }
+
   // Sliding after a big hit: the tyres scrub off speed and spin, then the AI takes over.
-  updateLoose(dt) {
+  updateLoose(dt, ctx) {
     const st = this.stage;
     this.looseTimer += dt;
     const speed = Math.hypot(this.looseVel.x, this.looseVel.z);
@@ -180,14 +184,16 @@ export class Rival {
     this.heading += this.looseW * dt;
     this.pos.x += this.looseVel.x * dt;
     this.pos.z += this.looseVel.z * dt;
-    const near = st.nearestLocal(this.pos.x, this.pos.z, Math.floor(this.s / st.step), 30);
-    this.s = near.index * st.step;
+    // keep s/offset/v current: following cars read them to plan around this one
+    this.projectOnRoad();
+    // a car can slide across the line too
+    this.checkFinish(ctx.running, ctx.raceTime);
     if (this.looseTimer > 1.3 && (Math.abs(this.looseW) < 1.1 || this.looseTimer > 2.6)) this.rejoin();
     else this.place3D(this.pos.x, this.pos.z, this.heading, dt, speed);
   }
 
-  // Back onto the racing model where the slide ended, keeping the leftover heading error.
-  rejoin() {
+  // Express the free-sliding state in road terms (s along the road, offset across it).
+  projectOnRoad() {
     const st = this.stage;
     const near = st.nearestLocal(this.pos.x, this.pos.z, Math.floor(this.s / st.step), 30);
     const p = st.samples[near.index];
@@ -195,9 +201,17 @@ export class Rival {
     const dx = this.pos.x - p.x;
     const dz = this.pos.z - p.y;
     this.s = near.index * st.step + dx * t.x + dz * t.y;
-    this.offset = clamp(dx * -t.y + dz * t.x, -9, 9);
-    this.v = Math.max(2, this.looseVel.x * t.x + this.looseVel.z * t.y);
+    // generous limit: beyond the road edge the AI simply steers back in
+    this.offset = clamp(dx * -t.y + dz * t.x, -20, 20);
+    this.v = Math.max(0, this.looseVel.x * t.x + this.looseVel.z * t.y);
     this.offsetVel = clamp(this.looseVel.x * -t.y + this.looseVel.z * t.x, -6, 6);
+    return t;
+  }
+
+  // Back onto the racing model where the slide ended, keeping the leftover heading error.
+  rejoin() {
+    const t = this.projectOnRoad();
+    this.v = Math.max(2, this.v);
     const slide = Math.atan2(this.offsetVel, Math.max(this.v, 3));
     const err = this.heading - (Math.atan2(t.x, t.y) - slide);
     this.headingBlend = Math.atan2(Math.sin(err), Math.cos(err));

@@ -318,7 +318,7 @@ function racePosition(playerS) {
 }
 
 // Car-to-car contact with oriented boxes: where the cars connect decides how they are
-// pushed and spun. Returns the player's worst velocity change this frame (m/s).
+// pushed and spun. Returns the player's hardest closing speed this frame (m/s).
 function playerBody() {
   return {
     x: physics.pos.x,
@@ -336,7 +336,7 @@ function collideCars() {
   const list = raceRivals();
   let worst = 0;
   for (const r of list) {
-    if (Math.abs(physics.pos.y - r.pos.y) > 2 || !physics.grounded) continue;
+    if (Math.abs(physics.pos.y - r.pos.y) > 2) continue;
     const a = playerBody();
     const b = r.body();
     const c = boxContact(a, b);
@@ -348,7 +348,7 @@ function collideCars() {
     physics.pos.x += c.nx * c.depth * 0.5;
     physics.pos.z += c.nz * c.depth * 0.5;
     r.applyContact(res.dvbx, res.dvbz, res.dwb, -c.nx * c.depth * 0.5, -c.nz * c.depth * 0.5);
-    worst = Math.max(worst, Math.hypot(res.dvax, res.dvaz));
+    worst = Math.max(worst, res.closing);
   }
   for (let i = 0; i < list.length; i++) {
     for (let j = i + 1; j < list.length; j++) {
