@@ -159,7 +159,21 @@
     @media (max-width: 640px) {
       .overlay { background: linear-gradient(0deg, rgba(20,10,6,0.88) 0%, rgba(20,10,6,0.5) 60%, rgba(20,10,6,0.15) 100%); align-items: flex-end; }
       .panel { margin: 0 auto; }
-      #pacenote { top: 84px; }
+      #hud-buttons { top: 10px; right: 10px; gap: 6px; }
+      #hud-buttons button { width: 34px; height: 34px; font-size: 14px; border-radius: 9px; }
+      #hud-top { top: 52px; }
+      #timer { font-size: 36px; }
+      #progress { width: 120px; }
+      #hud-progress, body.touch #hud-progress { top: 52px; left: 12px; }
+      #hud-skill, body.touch #hud-skill { top: 100px; left: 12px; }
+      #pct { font-size: 26px; }
+      #minimap, body.touch #minimap { width: 92px; height: 92px; top: 52px; right: 10px; left: auto; bottom: auto; }
+      #position, body.touch #position { top: 150px; right: 12px; }
+      #pos-num { font-size: 40px; }
+      #pacenote { top: 160px; padding: 8px 14px 8px 10px; gap: 10px; white-space: nowrap; }
+      #pacenote .arrow { width: 34px; height: 34px; }
+      #pn-main { font-size: 28px; }
+      #skill-chain { top: 38%; left: 12px; min-width: 120px; }
     }
   </style>
   <script type="importmap">

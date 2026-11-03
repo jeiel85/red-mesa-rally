@@ -705,6 +705,8 @@ function updateCamera(dt) {
     camera.position.y += (Math.random() - 0.5) * s;
   }
   shake = Math.max(0, shake - dt * 1.5);
+  // portrait screens: widen the vertical FOV so the horizontal view stays drivable
+  if (camera.aspect < 1) camera.fov = Math.min(100, camera.fov * (1 + (1 - camera.aspect) * 0.6));
   camera.updateProjectionMatrix();
 }
 
