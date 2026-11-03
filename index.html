@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Red Mesa Rally</title>
+  <meta name="description" content="A golden-hour desert gravel rally in your browser, built with three.js." />
+  <meta property="og:title" content="Red Mesa Rally" />
+  <meta property="og:description" content="Drift a rally hatchback through red-rock canyons at golden hour. three.js, no install." />
+  <meta property="og:image" content="https://jeiel85.github.io/red-mesa-rally/docs/00-cover.jpg" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%23c8202a'/><path d='M8 46 L22 22 L30 32 L38 16 L56 46 Z' fill='%23ffd7a8'/></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --red: #d42a2f;
+      --navy: #1d3f8f;
+      --sand: #ffd7a8;
+      --ink: #14100e;
+      --glass: rgba(18, 12, 10, 0.55);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #2a1810; color: #fff; font-family: Inter, system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+    #app, #app > canvas { display: block; position: fixed; inset: 0; }
+    .hidden { display: none !important; }
+    .display { font-family: 'Bebas Neue', Impact, sans-serif; letter-spacing: 0.04em; }
+
+    /* ---------- loading ---------- */
+    #loading { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(circle at 50% 70%, #6b2a14, #1c0f0a); z-index: 50; }
+    #loading .display { font-size: 42px; color: var(--sand); animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: 0.45; } }
+
+    /* ---------- overlays ---------- */
+    .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 20; background: linear-gradient(90deg, rgba(20,10,6,0.82) 0%, rgba(20,10,6,0.35) 55%, rgba(20,10,6,0) 100%); }
+    .panel { width: min(460px, 100%); margin-right: auto; margin-left: clamp(0px, 5vw, 80px); }
+    .logo { font-family: 'Bebas Neue', Impact, sans-serif; font-size: clamp(54px, 11vw, 96px); line-height: 0.86; margin: 0; color: #fff; text-shadow: 0 4px 30px rgba(0,0,0,0.4); }
+    .logo span { color: var(--sand); display: block; }
+    .tag { margin: 10px 0 22px; color: #f1d9c3; font-size: 15px; line-height: 1.5; max-width: 38ch; }
+    .stripe { height: 6px; width: 120px; background: linear-gradient(90deg, var(--navy) 0 33%, #fff 33% 66%, var(--red) 66%); border-radius: 3px; margin-bottom: 16px; }
+    #stage-list { display: grid; gap: 10px; margin-bottom: 18px; }
+    .stage-card { display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: auto auto; column-gap: 14px; align-items: center; text-align: left; padding: 12px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.35); color: #fff; cursor: pointer; font: inherit; transition: background 0.15s, border-color 0.15s, transform 0.15s; }
+    .stage-card:hover { background: rgba(255,255,255,0.08); transform: translateX(3px); }
+    .stage-card.active { border-color: var(--sand); background: rgba(255,215,168,0.12); }
+    .stage-card .num { grid-row: 1 / 3; font-family: 'Bebas Neue', Impact; font-size: 30px; color: var(--sand); }
+    .stage-card .name { font-weight: 800; font-size: 17px; }
+    .stage-card .sub { grid-column: 2; font-size: 13px; color: #d9c2ad; }
+    .stage-card .best { grid-row: 1 / 3; grid-column: 3; font-size: 12px; color: #d9c2ad; font-variant-numeric: tabular-nums; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 26px; border-radius: 999px; border: 0; background: var(--red); color: #fff; font: 800 16px Inter, sans-serif; letter-spacing: 0.06em; cursor: pointer; box-shadow: 0 8px 30px rgba(212,42,47,0.45); transition: transform 0.12s, filter 0.12s; }
+    .btn:hover { transform: translateY(-1px); filter: brightness(1.08); }
+    .btn.ghost { background: rgba(255,255,255,0.12); box-shadow: none; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .keys { margin-top: 22px; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 13px; color: #e6cdb6; }
+    kbd { display: inline-block; min-width: 22px; padding: 2px 7px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.08); font: 600 12px Inter, sans-serif; text-align: center; color: #fff; }
+    body.touch .keys { display: none; }
+
+    .center { margin: 0 auto; text-align: center; }
+    #results .big { font-family: 'Bebas Neue', Impact; font-size: clamp(64px, 16vw, 120px); line-height: 1; font-variant-numeric: tabular-nums; }
+    #res-best { font-weight: 800; letter-spacing: 0.08em; color: #f1d9c3; margin: 4px 0 14px; }
+    #res-best.record { color: #ffd23f; }
+    #res-splits { list-style: none; padding: 0; margin: 0 auto 20px; max-width: 260px; font-variant-numeric: tabular-nums; }
+    #res-splits li { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.12); color: #e6cdb6; }
+    #results.overlay, #pause.overlay { background: rgba(20,10,6,0.6); backdrop-filter: blur(3px); }
+
+    /* ---------- HUD ---------- */
+    .hud { position: fixed; z-index: 10; pointer-events: none; opacity: 0; transition: opacity 0.3s; }
+    body.racing .hud { opacity: 1; }
+    #hud-top { top: 14px; left: 50%; transform: translateX(-50%); text-align: center; }
+    #timer { font-family: 'Bebas Neue', Impact; font-size: 46px; line-height: 1; font-variant-numeric: tabular-nums; text-shadow: 0 2px 12px rgba(0,0,0,0.5); }
+    #progress { width: min(300px, 60vw); height: 6px; border-radius: 3px; background: rgba(0,0,0,0.4); overflow: hidden; margin: 6px auto 4px; }
+    #progress-fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--sand), #ff6b2c); }
+    #dist { font-size: 12px; font-weight: 600; color: #f1d9c3; text-shadow: 0 1px 6px rgba(0,0,0,0.6); }
+
+    #hud-speed { right: 22px; bottom: 22px; text-align: right; }
+    #speed { font-family: 'Bebas Neue', Impact; font-size: 92px; line-height: 0.8; font-variant-numeric: tabular-nums; text-shadow: 0 3px 18px rgba(0,0,0,0.5); }
+    .unit { font-size: 13px; font-weight: 800; letter-spacing: 0.15em; color: #f1d9c3; }
+    #gear-box { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    #gear { font-family: 'Bebas Neue', Impact; font-size: 40px; width: 44px; height: 44px; line-height: 46px; text-align: center; border-radius: 10px; background: var(--glass); border: 1px solid rgba(255,255,255,0.25); }
+    #rpm { width: 180px; height: 8px; border-radius: 4px; background: rgba(0,0,0,0.45); overflow: hidden; margin: 6px 0 0 auto; }
+    #rpm-fill { height: 100%; width: 100%; transform-origin: left; background: linear-gradient(90deg, #fff, var(--sand) 70%, #ff6b2c); transition: transform 0.05s; }
+    #rpm-fill.red { background: linear-gradient(90deg, #fff, #ff6b2c 60%, var(--red)); }
+
+    #minimap { left: 18px; bottom: 18px; width: 170px; height: 170px; border-radius: 50%; background: radial-gradient(circle, rgba(30,15,10,0.55), rgba(30,15,10,0.35)); border: 2px solid rgba(255,255,255,0.2); }
+
+    #pacenote { top: 92px; left: 50%; transform: translate(-50%, -10px); display: flex; align-items: center; gap: 14px; padding: 10px 20px 10px 14px; border-radius: 14px; background: var(--glass); border: 1px solid rgba(255,255,255,0.18); backdrop-filter: blur(4px); opacity: 0 !important; transition: opacity 0.2s, transform 0.2s; }
+    #pacenote.show { opacity: 1 !important; transform: translate(-50%, 0); }
+    #pacenote .arrow { width: 44px; height: 44px; border-radius: 50%; background: var(--sand); position: relative; }
+    #pacenote .arrow::after { content: ''; position: absolute; inset: 0; background: var(--ink); clip-path: polygon(30% 25%, 72% 50%, 30% 75%, 40% 50%); }
+    #pacenote .arrow.left::after { transform: scaleX(-1); }
+    #pacenote[data-grade='1'] .arrow, #pacenote[data-grade='2'] .arrow { background: #ff6b2c; }
+    #pacenote[data-grade='3'] .arrow { background: #ffd23f; }
+    #pn-main { font-family: 'Bebas Neue', Impact; font-size: 36px; line-height: 1; }
+    #pn-extra { font-size: 11px; font-weight: 800; letter-spacing: 0.15em; color: #ffd23f; }
+    #pn-dist { font-size: 13px; font-weight: 600; color: #f1d9c3; margin-left: 6px; font-variant-numeric: tabular-nums; }
+
+    #hud-buttons { top: 14px; right: 14px; display: flex; gap: 8px; pointer-events: auto; }
+    #hud-buttons button { width: 40px; height: 40px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.22); background: var(--glass); color: #fff; font-size: 17px; cursor: pointer; }
+    #btn-voice.off { opacity: 0.45; }
+    body:not(.racing) #hud-buttons { pointer-events: none; }
+
+    #countdown { position: fixed; z-index: 15; left: 50%; top: 38%; transform: translate(-50%, -50%) scale(0.8); font-family: 'Bebas Neue', Impact; font-size: clamp(110px, 24vw, 200px); color: #fff; text-shadow: 0 6px 40px rgba(0,0,0,0.55); opacity: 0; pointer-events: none; transition: opacity 0.25s, transform 0.25s; }
+    #countdown.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    #flash { position: fixed; z-index: 15; left: 50%; top: 24%; transform: translateX(-50%); padding: 8px 18px; border-radius: 999px; background: var(--glass); font-weight: 800; letter-spacing: 0.06em; font-size: 15px; opacity: 0; pointer-events: none; transition: opacity 0.3s; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    #flash.show { opacity: 1; }
+    #offroad { position: fixed; z-index: 15; left: 50%; bottom: 26%; transform: translateX(-50%); padding: 8px 18px; border-radius: 999px; background: rgba(212,42,47,0.85); font-weight: 800; letter-spacing: 0.08em; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+    #offroad.show { opacity: 1; }
+
+    #mode-toggle { display: inline-flex; padding: 4px; border-radius: 999px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.18); margin-bottom: 12px; }
+    #mode-toggle button { border: 0; background: transparent; color: #e6cdb6; font: 800 12px Inter, sans-serif; letter-spacing: 0.08em; padding: 8px 14px; border-radius: 999px; cursor: pointer; }
+    #mode-toggle button.active { background: var(--sand); color: var(--ink); }
+
+    #position { top: 64px; right: 16px; text-align: right; }
+    #position .label { font-size: 11px; font-weight: 800; letter-spacing: 0.18em; color: #f1d9c3; }
+    #pos-num { font-family: 'Bebas Neue', Impact; font-size: 54px; line-height: 0.9; text-shadow: 0 2px 14px rgba(0,0,0,0.5); }
+    #hud-progress { top: 16px; left: 22px; }
+    #pct { font-family: 'Bebas Neue', Impact; font-size: 34px; line-height: 1; text-shadow: 0 2px 12px rgba(0,0,0,0.5); }
+    #hud-progress .label, #hud-skill .label { font-size: 11px; font-weight: 800; letter-spacing: 0.18em; color: #f1d9c3; }
+    #hud-skill { top: 70px; left: 22px; }
+    #skill-total { font-family: 'Bebas Neue', Impact; font-size: 26px; line-height: 1; color: #ffd23f; font-variant-numeric: tabular-nums; }
+
+    #skill-chain { left: 22px; top: 44%; padding: 10px 14px; border-radius: 12px; background: var(--glass); border-left: 4px solid #ffd23f; min-width: 150px; opacity: 0 !important; transform: translateX(-8px); transition: opacity 0.2s, transform 0.2s; }
+    #skill-chain.show { opacity: 1 !important; transform: none; }
+    #sc-mult { font-family: 'Bebas Neue', Impact; font-size: 30px; color: #ffd23f; line-height: 1; }
+    #sc-pending { font-family: 'Bebas Neue', Impact; font-size: 30px; line-height: 1; margin-left: 8px; font-variant-numeric: tabular-nums; }
+    #sc-live { font-size: 11px; font-weight: 800; letter-spacing: 0.14em; color: #f1d9c3; min-height: 14px; }
+    #sc-track { height: 3px; border-radius: 2px; background: rgba(255,255,255,0.15); margin-top: 6px; overflow: hidden; }
+    #sc-bar { height: 100%; background: #ffd23f; transform-origin: left; }
+    #skill-pop { position: fixed; z-index: 14; left: 50%; top: 31%; transform: translate(-50%, 8px); text-align: center; opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; text-shadow: 0 2px 16px rgba(0,0,0,0.6); }
+    #skill-pop.show { opacity: 1; transform: translate(-50%, 0); }
+    #sp-label { font-weight: 800; letter-spacing: 0.16em; font-size: 15px; color: #f1d9c3; }
+    #sp-points { font-family: 'Bebas Neue', Impact; font-size: 40px; line-height: 1; color: #ffd23f; }
+    #skill-pop.banked #sp-label { color: #ffd23f; font-size: 18px; }
+    #skill-pop.banked #sp-points { font-size: 54px; color: #fff; }
+    #skill-pop.broken #sp-label { color: #ff6b6b; }
+    #skill-pop.broken #sp-points { font-size: 18px; color: #f1d9c3; font-family: Inter, sans-serif; font-weight: 800; letter-spacing: 0.14em; }
+    #res-position { font-family: 'Bebas Neue', Impact; font-size: 40px; color: #fff; letter-spacing: 0.06em; }
+    #res-position.win { color: #ffd23f; }
+    #res-skill { color: #e6cdb6; font-size: 14px; margin-bottom: 16px; font-variant-numeric: tabular-nums; }
+
+    /* ---------- touch controls ---------- */
+    #touch { display: none; }
+    body.touch.racing #touch { display: block; }
+    .tbtn { position: fixed; z-index: 12; width: 76px; height: 76px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.35); background: rgba(20,10,6,0.35); color: #fff; font: 800 15px Inter, sans-serif; display: grid; place-items: center; backdrop-filter: blur(3px); }
+    .tbtn.down { background: rgba(255,215,168,0.45); }
+    #t-left { left: 16px; bottom: 110px; }
+    #t-right { left: 104px; bottom: 110px; }
+    #t-gas { right: 16px; bottom: 150px; width: 84px; height: 84px; background: rgba(60,207,110,0.3); }
+    #t-brake { right: 112px; bottom: 120px; background: rgba(212,42,47,0.3); }
+    #t-hb { right: 112px; bottom: 206px; width: 64px; height: 64px; font-size: 12px; }
+    body.touch #minimap { width: 110px; height: 110px; left: auto; right: 14px; top: 64px; bottom: auto; }
+    body.touch #position { top: 182px; }
+    body.touch #hud-progress, body.touch #hud-skill { left: 14px; }
+    body.touch #hud-progress { top: 64px; }
+    body.touch #hud-skill { top: 112px; }
+    body.touch #speed { font-size: 58px; }
+    body.touch #rpm { width: 120px; }
+    body.touch #hud-speed { bottom: 248px; right: 20px; }
+
+    @media (max-width: 640px) {
+      .overlay { background: linear-gradient(0deg, rgba(20,10,6,0.88) 0%, rgba(20,10,6,0.5) 60%, rgba(20,10,6,0.15) 100%); align-items: flex-end; }
+      .panel { margin: 0 auto; }
+      #pacenote { top: 84px; }
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div id="loading"><div class="display">Building the stage…</div></div>
+
+  <!-- Menu -->
+  <div id="menu" class="overlay hidden">
+    <div class="panel">
+      <div class="stripe"></div>
+      <h1 class="logo">Red Mesa<span>Rally</span></h1>
+      <p class="tag">Gravel, red rock and a low sun. Pick a special stage, listen to your co-driver and keep it out of the scenery.</p>
+      <div id="mode-toggle">
+        <button data-mode="race">RACE · 5 RIVALS</button>
+        <button data-mode="attack">TIME ATTACK</button>
+      </div>
+      <div id="stage-list"></div>
+      <div class="row"><button class="btn" id="btn-start">START STAGE ▸</button></div>
+      <div class="keys">
+        <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows</span><span>Drive · brake / reverse</span>
+        <span><kbd>Space</kbd></span><span>Handbrake (flick it into hairpins)</span>
+        <span><kbd>C</kbd></span><span>Camera: chase · bonnet · far chase</span>
+        <span><kbd>R</kbd></span><span>Put the car back on the road</span>
+        <span><kbd>V</kbd> <kbd>M</kbd> <kbd>P</kbd></span><span>Co-driver voice · mute · pause</span>
+        <span>Skill chain</span><span>Drifts, jumps, flat-out runs and overtakes stack a multiplier. Crash and it's gone.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pause -->
+  <div id="pause" class="overlay hidden">
+    <div class="panel center">
+      <h2 class="logo" style="font-size:72px">Paused</h2>
+      <div class="row" style="justify-content:center;margin-top:18px">
+        <button class="btn" id="btn-resume">RESUME</button>
+        <button class="btn ghost" id="btn-restart">RESTART</button>
+        <button class="btn ghost" id="btn-quit">STAGES</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results" class="overlay hidden">
+    <div class="panel center">
+      <div class="stripe" style="margin:0 auto 14px"></div>
+      <div class="display" id="res-stage" style="font-size:28px;color:var(--sand)"></div>
+      <div class="big" id="res-time">0:00.00</div>
+      <div id="res-position" class="hidden"></div>
+      <div id="res-best"></div>
+      <div id="res-skill"></div>
+      <ul id="res-splits"></ul>
+      <div class="row" style="justify-content:center">
+        <button class="btn" id="btn-retry">RETRY ↻</button>
+        <button class="btn ghost" id="btn-menu">STAGES</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud-top" class="hud">
+    <div id="timer">0:00.00</div>
+    <div id="progress"><div id="progress-fill"></div></div>
+    <div id="dist">0.00 km</div>
+  </div>
+  <div id="hud-progress" class="hud"><div class="label">PROGRESS</div><div id="pct">0%</div></div>
+  <div id="hud-skill" class="hud"><div class="label">SKILL</div><div id="skill-total">0</div></div>
+  <div id="position" class="hud hidden"><div class="label">POSITION</div><div id="pos-num">6/6</div></div>
+  <div id="skill-chain" class="hud">
+    <div><span id="sc-mult">×1.00</span><span id="sc-pending">0</span></div>
+    <div id="sc-live"></div>
+    <div id="sc-track"><div id="sc-bar"></div></div>
+  </div>
+  <div id="skill-pop"><div id="sp-label"></div><div id="sp-points"></div></div>
+  <div id="pacenote" class="hud">
+    <div id="pn-arrow" class="arrow right"></div>
+    <div><div id="pn-main">RIGHT 4</div><div id="pn-extra"></div></div>
+    <div id="pn-dist">100 m</div>
+  </div>
+  <div id="hud-speed" class="hud">
+    <div id="gear-box"><span class="unit">GEAR</span><div id="gear">1</div></div>
+    <div id="speed">0</div>
+    <div class="unit">KM/H</div>
+    <div id="rpm"><div id="rpm-fill"></div></div>
+  </div>
+  <canvas id="minimap" class="hud" width="360" height="360"></canvas>
+  <div id="hud-buttons" class="hud">
+    <button id="btn-cam" title="Camera (C)">🎥</button>
+    <button id="btn-voice" title="Co-driver voice (V)">🗣️</button>
+    <button id="btn-mute" title="Mute (M)">🔊</button>
+    <button id="btn-reset" title="Reset to road (R)">↺</button>
+    <button id="btn-pause" title="Pause (P)">❚❚</button>
+  </div>
+  <div id="countdown">3</div>
+  <div id="flash"></div>
+  <div id="offroad">RETURN TO THE STAGE</div>
+
+  <div id="touch">
+    <div class="tbtn" id="t-left">◀</div>
+    <div class="tbtn" id="t-right">▶</div>
+    <div class="tbtn" id="t-gas">GAS</div>
+    <div class="tbtn" id="t-brake">BRAKE</div>
+    <div class="tbtn" id="t-hb">HB</div>
+  </div>
+
+  <noscript>Red Mesa Rally needs JavaScript and WebGL.</noscript>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
